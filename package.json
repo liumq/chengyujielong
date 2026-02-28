@@ -1,0 +1,17 @@
+{
+  "name": "chengyujielong",
+  "version": "0.1.0",
+  "description": "成语接龙 H5 单机小游戏",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:server": "cd server && pnpm dev",
+    "build:h5": "vite build",
+    "build:wx": "vite build --config vite.config.wx.ts && cp wx/game.json dist/wx/game.json && cp wx/project.config.json dist/wx/project.config.json && cp wx/weapp-adapter.js dist/wx/weapp-adapter.js",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vite": "^6.2.0"
+  }
+}

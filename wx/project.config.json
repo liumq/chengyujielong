@@ -1,0 +1,30 @@
+{
+  "appid": "YOUR_APPID_HERE",
+  "projectname": "chengyujielong",
+  "description": "成语接龙 H5 单机小游戏",
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "enhance": true,
+    "minify": true,
+    "minifyWXSS": true,
+    "minifyWXML": true,
+    "uglifyFileName": false,
+    "ignoreUploadUnusedFiles": true,
+    "autoAudits": false,
+    "newFeature": false,
+    "coverView": true,
+    "useStaticServer": false,
+    "showShadowRootInWxmlPanel": true,
+    "packNpmManually": false,
+    "packNpmRelationList": [],
+    "minification": {
+      "minifyWXML": true,
+      "minifyWXSS": true,
+      "minifyJS": true
+    }
+  },
+  "compileType": "game",
+  "miniprogramRoot": "./",
+  "srcMiniprogramRoot": "./"
+}
