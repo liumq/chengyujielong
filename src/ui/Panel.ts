@@ -1,5 +1,5 @@
 import { UIComponent } from './UIComponent'
-import { TweenManager, Easing } from '../core/Tween'
+import { TweenManager, Easing, type Tween } from '../core/Tween'
 
 export interface PanelOptions {
   bgColor?: string
@@ -22,6 +22,8 @@ export class Panel extends UIComponent {
   private offsetY: number = 0
   /** 动画缩放（用于 scale 动画） */
   private animScale: number = 1
+  /** 当前活跃的动画补间 */
+  private activeTween: Tween | null = null
 
   private children: UIComponent[] = []
 
@@ -39,63 +41,72 @@ export class Panel extends UIComponent {
     return this
   }
 
-  /** 播放进入动画 */
+  /** 播放进入动画（重复调用时取消旧补间并重置状态） */
   playEnterAnimation(onComplete?: () => void): void {
+    if (this.activeTween) {
+      this.activeTween.cancel()
+      this.activeTween = null
+    }
+    this.visible = true
     switch (this.enterFrom) {
       case 'bottom':
         this.offsetY = this.height + 40
         this.alpha = 0
-        TweenManager.instance.create({
+        this.activeTween = TweenManager.instance.create({
           duration: 350,
           easing: Easing.easeOutCubic,
           onUpdate: (t) => {
             this.offsetY = (1 - t) * (this.height + 40)
             this.alpha = t
           },
-          onComplete,
+          onComplete: () => { this.activeTween = null; onComplete?.() },
         })
         break
       case 'top':
         this.offsetY = -(this.height + 40)
         this.alpha = 0
-        TweenManager.instance.create({
+        this.activeTween = TweenManager.instance.create({
           duration: 350,
           easing: Easing.easeOutCubic,
           onUpdate: (t) => {
             this.offsetY = (1 - t) * -(this.height + 40)
             this.alpha = t
           },
-          onComplete,
+          onComplete: () => { this.activeTween = null; onComplete?.() },
         })
         break
       case 'fade':
         this.alpha = 0
-        TweenManager.instance.create({
+        this.activeTween = TweenManager.instance.create({
           duration: 300,
           easing: Easing.linear,
           onUpdate: (t) => { this.alpha = t },
-          onComplete,
+          onComplete: () => { this.activeTween = null; onComplete?.() },
         })
         break
       case 'scale':
       default:
         this.animScale = 0.6
         this.alpha = 0
-        TweenManager.instance.create({
+        this.activeTween = TweenManager.instance.create({
           duration: 300,
           easing: Easing.easeOutBack,
           onUpdate: (t) => {
             this.animScale = 0.6 + t * 0.4
             this.alpha = Math.min(1, t * 1.5)
           },
-          onComplete,
+          onComplete: () => { this.activeTween = null; onComplete?.() },
         })
     }
   }
 
-  /** 播放退出动画 */
+  /** 播放退出动画（取消进行中的动画后播放） */
   playExitAnimation(onComplete?: () => void): void {
-    TweenManager.instance.create({
+    if (this.activeTween) {
+      this.activeTween.cancel()
+      this.activeTween = null
+    }
+    this.activeTween = TweenManager.instance.create({
       duration: 200,
       easing: Easing.easeInQuad,
       onUpdate: (t) => {
@@ -104,6 +115,7 @@ export class Panel extends UIComponent {
       },
       onComplete: () => {
         this.visible = false
+        this.activeTween = null
         onComplete?.()
       },
     })

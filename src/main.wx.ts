@@ -31,4 +31,6 @@ async function main(): Promise<void> {
   }
 }
 
-main()
+main().catch(() => {
+  // 微信小游戏环境下静默处理启动异常
+})

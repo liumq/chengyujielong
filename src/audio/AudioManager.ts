@@ -7,7 +7,7 @@ export class AudioManager {
   private audioCtx: AudioContext | null = null
   private enabled: boolean = true
 
-  constructor(_platform: unknown, enabled = true) {
+  constructor(enabled = true) {
     this.enabled = enabled
   }
 

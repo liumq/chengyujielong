@@ -4,7 +4,7 @@ import { ScoreManager } from './ScoreManager'
 
 export type ChainResult =
   | { ok: true; entry: IdiomEntry; gained: number; comboText: string }
-  | { ok: false; reason: '不在词库' | '已使用' | '无法接龙' | '超时' }
+  | { ok: false; reason: '不在词库' | '已使用' | '无法接龙' | '已结束' }
 
 /**
  * 接龙核心逻辑
@@ -83,10 +83,11 @@ export class IdiomChain {
     return start
   }
 
-  /** 重置倒计时（随接龙次数递减，每次减少1秒，最低10秒） */
+  /** 重置倒计时（随接龙次数递减，每次减少1秒，最低 MIN_TIME_LIMIT） */
   resetTimer(): void {
     const successCount = Math.max(0, this.history.length - 1)
-    const reduction = Math.min(successCount * 1000, this._timeLimitMs - this.MIN_TIME_LIMIT)
+    const maxReduction = Math.max(0, this._timeLimitMs - this.MIN_TIME_LIMIT)
+    const reduction = Math.min(successCount * 1000, maxReduction)
     this._currentTimeLimit = this._timeLimitMs - reduction
     this._timeLeft = this._currentTimeLimit
   }
@@ -145,6 +146,12 @@ export class IdiomChain {
     this._inputText = this._inputText.slice(0, -1)
   }
 
+  /** 删除指定位置的输入字符 */
+  deleteInputAt(index: number): void {
+    if (index < 0 || index >= this._inputText.length) return
+    this._inputText = this._inputText.slice(0, index) + this._inputText.slice(index + 1)
+  }
+
   /** 清空输入 */
   clearInput(): void {
     this._inputText = ''
@@ -154,7 +161,7 @@ export class IdiomChain {
    * 提交当前输入，尝试接龙
    */
   submit(): ChainResult {
-    if (this._gameOver) return { ok: false, reason: '超时' }
+    if (this._gameOver) return { ok: false, reason: '已结束' }
     const word = this._inputText.trim()
     this._inputText = ''
 
@@ -171,7 +178,8 @@ export class IdiomChain {
       return { ok: false, reason: '无法接龙' }
     }
 
-    const entry = this.db.find(word)!
+    const entry = this.db.find(word)
+    if (!entry) return { ok: false, reason: '不在词库' }
     this.db.markUsed(word)
     this.history.push(entry)
     this.currentLastPinyin = entry.last

@@ -32,4 +32,6 @@ async function main(): Promise<void> {
   }
 }
 
-main()
+main().catch((err) => {
+  document.body.innerHTML = `<pre style="color:red;padding:20px">启动失败: ${err instanceof Error ? err.message : err}</pre>`
+})

@@ -32,6 +32,16 @@ export class GameScene extends Scene {
   private screenFlashAlpha: number = 0
   private screenFlashColor: string = '#4caf50'
 
+  /** 成语释义展示 */
+  private meaningMsg: string = ''
+  private meaningAlpha: number = 0
+  /** 倒计时紧迫感脉冲（弧度，用于 sin 计算闪烁） */
+  private timerPulse: number = 0
+  /** 成语卡片过渡动画进度（0→1） */
+  private idiomTransition: number = 1
+  /** 输入框中每个字符的点击区域 */
+  private inputCharRects: Array<{ x: number; w: number; h: number; cy: number }> = []
+
   /** 动态键盘相关 */
   private keyChars: string[] = []
   private keyButtons: Button[] = []
@@ -49,6 +59,8 @@ export class GameScene extends Scene {
   private keyboardStartY = 0
   /** 超时结算是否已触发 */
   private timeoutHandled = false
+  /** 延迟跳转定时器，场景退出时需清理 */
+  private pendingTimers: ReturnType<typeof setTimeout>[] = []
   /** 退出确认弹窗是否可见 */
   private quitDialogVisible = false
   /** 退出弹窗按钮 */
@@ -69,18 +81,20 @@ export class GameScene extends Scene {
     this.currentIdiom = startIdiom
     this.timeoutHandled = false
     this.quitDialogVisible = false
+    this.idiomTransition = 1
+    this.meaningAlpha = 0
+    this.timerPulse = 0
 
     this.refreshKeyboard()
 
     this.engine.input.onTap((x, y) => {
-      // 退出确认弹窗打开时，只处理弹窗按钮
       if (this.quitDialogVisible) {
         if (this.quitConfirmBtn?.handleTap(x, y)) {
           this.engine.audio.play('tap')
           this.quitDialogVisible = false
           this.chain.resume()
           this.chain.quit()
-          setTimeout(() => this.goResult(), 300)
+          this.scheduleTimer(() => this.goResult(), 300)
         }
         if (this.quitCancelBtn?.handleTap(x, y)) {
           this.engine.audio.play('tap')
@@ -92,13 +106,11 @@ export class GameScene extends Scene {
 
       if (this.chain.isGameOver) return
 
-      // 退出按钮
       if (this.quitBtn?.handleTap(x, y)) {
         this.engine.audio.play('tap')
         this.showQuitDialog()
         return
       }
-      // 功能键
       if (this.deleteBtn?.handleTap(x, y)) {
         this.engine.audio.play('tap')
         this.chain.deleteInput()
@@ -114,12 +126,24 @@ export class GameScene extends Scene {
         this.doSubmit()
         return
       }
+
+      // 输入框字符点击删除
+      for (let i = 0; i < this.inputCharRects.length; i++) {
+        const rect = this.inputCharRects[i]
+        if (x >= rect.x && x <= rect.x + rect.w &&
+            y >= rect.cy - rect.h / 2 && y <= rect.cy + rect.h / 2) {
+          this.engine.audio.play('tap')
+          this.chain.deleteInputAt(i)
+          return
+        }
+      }
+
       // 汉字键
       for (const btn of this.keyButtons) {
         if (btn.handleTap(x, y)) {
           this.engine.audio.play('tap')
           if (this.chain.inputText.length < 4) {
-            this.chain.appendInput((btn as unknown as { _char: string })._char)
+            this.chain.appendInput(btn.data.char as string)
           }
           return
         }
@@ -129,8 +153,19 @@ export class GameScene extends Scene {
 
   onExit(): void {
     super.onExit()
-    this.engine.input.destroy()
+    this.engine.input.reset()
     TweenManager.instance.clear()
+    this.pendingTimers.forEach(t => clearTimeout(t))
+    this.pendingTimers = []
+  }
+
+  /** 注册延迟回调，场景退出时自动清理 */
+  private scheduleTimer(fn: () => void, ms: number): void {
+    const id = setTimeout(() => {
+      this.pendingTimers = this.pendingTimers.filter(t => t !== id)
+      fn()
+    }, ms)
+    this.pendingTimers.push(id)
   }
 
   /**
@@ -139,17 +174,16 @@ export class GameScene extends Scene {
    * 难度递增：初始候选字占70%，5次后50%，10次后30%
    */
   private generateKeyChars(): string[] {
-    const candidates = this.chain.getHints().length > 0
-      ? this.chain.db.findNext(this.chain.currentLastPinyin_!)
+    const lastPinyin = this.chain.currentLastPinyin_
+    const candidates = lastPinyin && this.chain.getHints().length > 0
+      ? this.chain.db.findNext(lastPinyin)
       : []
 
     const total = 20
     const successCount = Math.max(0, this.chain.chainLength - 1)
-    // 根据接龙次数调整候选字上限比例
     const candidateRatio = successCount >= 10 ? 0.3 : successCount >= 5 ? 0.5 : 0.7
     const maxCandidateChars = Math.floor(total * candidateRatio)
 
-    // 从候选成语中提取所有唯一汉字
     const candidateChars: string[] = []
     const candidateCharSet = new Set<string>()
     for (const entry of candidates) {
@@ -161,30 +195,24 @@ export class GameScene extends Scene {
       }
     }
 
-    // 截取候选字到上限
     const usedCandidates = candidateChars.slice(0, maxCandidateChars)
     const resultSet = new Set<string>(usedCandidates)
 
-    // 用干扰字填满剩余位置
-    const allChars = this.getAllCharsFromDB()
-    while (resultSet.size < total && allChars.length > 0) {
-      const idx = Math.floor(Math.random() * allChars.length)
-      resultSet.add(allChars[idx])
-      allChars.splice(idx, 1)
+    // Fisher-Yates 采样填充干扰字，避免逐个 splice
+    const allChars = this.chain.db.getAllChars()
+    const pool = allChars.slice()
+    for (let i = pool.length - 1; i > 0 && resultSet.size < total; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[pool[i], pool[j]] = [pool[j], pool[i]]
+      resultSet.add(pool[i])
     }
 
-    // 转数组并打散
     const chars = Array.from(resultSet)
     for (let i = chars.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1))
       ;[chars[i], chars[j]] = [chars[j], chars[i]]
     }
     return chars.slice(0, total)
-  }
-
-  /** 从词库中获取所有不重复的汉字（用于干扰字） */
-  private getAllCharsFromDB(): string[] {
-    return this.chain.db.getAllChars()
   }
 
   /** 刷新键盘：清除旧按钮，生成新字符，创建新按钮 */
@@ -212,13 +240,11 @@ export class GameScene extends Scene {
     const totalKeyboardH = (rows + 1) * (keyH + gap) + 12
     this.keyboardStartY = height - totalKeyboardH - 16
 
-    // 退出按钮（顶栏右上角）
     this.quitBtn = new Button(width - 62, 18, 48, 36, {
       text: '退出', fontSize: 12, bgColor: 'rgba(83,52,131,0.6)', borderColor: '#a8d8ea33', radius: 8,
     }).setOnClick(() => {})
     this.addObject(this.quitBtn)
 
-    // 汉字键
     this.keyChars.forEach((ch, i) => {
       const col = i % cols
       const row = Math.floor(i / cols)
@@ -227,12 +253,12 @@ export class GameScene extends Scene {
       const btn = new Button(x, y, keyW - 2, keyH, {
         text: ch, fontSize: 18, bgColor: '#0f3460', borderColor: '#a8d8ea33', radius: 8,
       }).setOnClick(() => {})
-      ;(btn as unknown as { _char: string })._char = ch
+      btn.data.char = ch
+      btn.data.defaultBg = '#0f3460'
       this.keyButtons.push(btn)
       this.addObject(btn)
     })
 
-    // 功能键行
     const funcY = this.keyboardStartY + rows * (keyH + gap) + 4
     this.deleteBtn = new Button(10, funcY, keyW * 2 - 2, keyH, {
       text: '⌫ 删除', fontSize: 16, bgColor: '#533483', borderColor: 'transparent', radius: 8,
@@ -276,6 +302,23 @@ export class GameScene extends Scene {
       this.engine.audio.play(result.comboText ? 'combo' : 'correct')
       this.triggerScreenFlash(result.comboText ? '#ffd700' : '#4caf50')
 
+      // 成语释义展示
+      if (result.entry.meaning) {
+        this.meaningMsg = result.entry.meaning
+        this.meaningAlpha = 1
+        TweenManager.instance.create({
+          duration: 2500, delay: 800, easing: Easing.easeOutQuad,
+          onUpdate: (t) => { this.meaningAlpha = 1 - t },
+        })
+      }
+
+      // 成语卡片过渡动画
+      this.idiomTransition = 0
+      TweenManager.instance.create({
+        duration: 350, easing: Easing.easeOutCubic,
+        onUpdate: (t) => { this.idiomTransition = t },
+      })
+
       if (result.comboText) {
         this.comboText = result.comboText
         this.comboAlpha = 1
@@ -294,18 +337,18 @@ export class GameScene extends Scene {
         onComplete: () => { this.scoreScale = 1 },
       })
 
-      // 刷新键盘（新的可接龙汉字）
       this.refreshKeyboard()
 
       if (this.chain.isGameOver) {
-        setTimeout(() => this.goResult(), 1500)
+        this.scheduleTimer(() => this.goResult(), 1500)
       }
     } else {
-      const msgMap = {
+      const msgMap: Record<string, string> = {
         '不在词库': '成语不存在',
         '已使用': '该成语已用过',
         '无法接龙': `需要以"${this.chain.currentLastPinyin_}"音开头`,
         '超时': '超时！',
+        '已结束': '游戏已结束',
       }
       this.showFeedback(msgMap[result.reason], '#e94560')
       this.engine.audio.play('wrong')
@@ -333,24 +376,26 @@ export class GameScene extends Scene {
     this.showFeedback(`提示：${hints[0].word}`, '#a8d8ea')
   }
 
-  /** 显示退出确认弹窗 */
+  /** 显示退出确认弹窗（按钮复用，避免重复创建对象堆积） */
   private showQuitDialog(): void {
     this.quitDialogVisible = true
     this.chain.pause()
 
-    const { width, height } = this.engine
-    const panelW = 260
-    const panelH = 150
-    const panelX = (width - panelW) / 2
-    const panelY = (height - panelH) / 2
+    if (!this.quitConfirmBtn || !this.quitCancelBtn) {
+      const { width, height } = this.engine
+      const panelW = 260
+      const panelH = 150
+      const panelX = (width - panelW) / 2
+      const panelY = (height - panelH) / 2
 
-    this.quitConfirmBtn = new Button(panelX + 20, panelY + panelH - 56, 100, 40, {
-      text: '确认退出', fontSize: 14, bold: true, bgColor: '#e94560', borderColor: 'transparent', radius: 10,
-    }).setOnClick(() => {})
+      this.quitConfirmBtn = new Button(panelX + 20, panelY + panelH - 56, 100, 40, {
+        text: '确认退出', fontSize: 14, bold: true, bgColor: '#e94560', borderColor: 'transparent', radius: 10,
+      }).setOnClick(() => {})
 
-    this.quitCancelBtn = new Button(panelX + panelW - 120, panelY + panelH - 56, 100, 40, {
-      text: '继续游戏', fontSize: 14, bgColor: '#0f3460', borderColor: '#a8d8ea55', radius: 10,
-    }).setOnClick(() => {})
+      this.quitCancelBtn = new Button(panelX + panelW - 120, panelY + panelH - 56, 100, 40, {
+        text: '继续游戏', fontSize: 14, bgColor: '#0f3460', borderColor: '#a8d8ea55', radius: 10,
+      }).setOnClick(() => {})
+    }
   }
 
   /** 触发全屏闪烁效果 */
@@ -376,12 +421,14 @@ export class GameScene extends Scene {
   }
 
   private goResult(): void {
+    this.engine.audio.play('gameover')
     import('./ResultScene').then(({ ResultScene }) => {
       this.engine.switchScene(new ResultScene(this.engine, {
         score: this.chain.score.score,
         chainLength: this.chain.chainLength,
         bestCombo: this.chain.score.bestCombo,
         reason: this.chain.gameOverReason,
+        history: this.chain.historyList,
       }))
     })
   }
@@ -397,9 +444,24 @@ export class GameScene extends Scene {
       this.hintBtn.bgColor = this.chain.canUseHint ? '#16213e' : '#1a1a2e'
     }
 
+    // 键盘按键高亮：当前输入中包含的字符对应的按键
+    const inputText = this.chain.inputText
+    for (const btn of this.keyButtons) {
+      const ch = btn.data.char as string
+      btn.bgColor = inputText.includes(ch) ? '#1a5276' : (btn.data.defaultBg as string)
+    }
+
+    // 倒计时紧迫感脉冲
+    const timeLeft = this.chain.timeLeft ?? this.chain.currentTimeLimit
+    if (timeLeft < 5000 && !this.chain.isGameOver && !this.chain.paused) {
+      this.timerPulse += deltaTime * 0.008
+    } else {
+      this.timerPulse = 0
+    }
+
     if (this.chain.isGameOver && this.chain.gameOverReason === '超时！' && !this.timeoutHandled) {
       this.timeoutHandled = true
-      setTimeout(() => this.goResult(), 500)
+      this.scheduleTimer(() => this.goResult(), 500)
     }
   }
 
@@ -407,12 +469,8 @@ export class GameScene extends Scene {
     const { width, height } = this.engine
     const r = this.r
 
-    // 背景
-    const grad = ctx.createLinearGradient(0, 0, 0, height)
-    grad.addColorStop(0, '#1a1a2e')
-    grad.addColorStop(1, '#16213e')
-    ctx.fillStyle = grad
-    ctx.fillRect(0, 0, width, height)
+    // 背景（使用缓存渐变）
+    r.fillBackground(width, height)
 
     // === 顶栏：分数 & 接龙数 ===
     r.fillRoundRect(10, 10, width - 20, 54, 12, 'rgba(15,52,96,0.7)')
@@ -426,10 +484,9 @@ export class GameScene extends Scene {
     r.fillText('接龙数', width * 2 / 4, 26, '#a8d8ea88', 12)
     r.fillBoldText(`${this.chain.chainLength}`, width * 2 / 4, 46, '#f5f5f5', 22)
 
-    // 退出按钮
     this.quitBtn?.render(ctx)
 
-    // === 倒计时进度条（使用动态时间上限） ===
+    // === 倒计时进度条 ===
     const currentLimit = this.chain.currentTimeLimit
     const timeLeft = this.chain.timeLeft ?? currentLimit
     const barW = width - 20
@@ -438,21 +495,54 @@ export class GameScene extends Scene {
     r.fillRoundRect(10, 68, barW, 6, 3, '#ffffff11')
     r.fillRoundRect(10, 68, Math.max(0, barW * barProgress), 6, 3, barColor)
 
-    // === 难度信息：当前限时 ===
+    // 紧迫感：低于5秒时进度条和边框脉冲闪烁
+    if (this.timerPulse > 0) {
+      const pulse = Math.abs(Math.sin(this.timerPulse))
+      r.save()
+      r.setAlpha(pulse * 0.5)
+      r.fillRoundRect(10, 66, barW, 10, 5, '#e94560')
+      r.resetAlpha()
+      r.restore()
+      // 屏幕边缘红色警示
+      r.save()
+      r.setAlpha(pulse * 0.08)
+      r.fillRect(0, 0, width, height, '#e94560')
+      r.resetAlpha()
+      r.restore()
+    }
+
+    // === 难度信息 ===
     const timeLimitSec = Math.round(currentLimit / 1000)
     r.fillText(`限时 ${timeLimitSec}s`, width - 40, 80, '#a8d8ea66', 10)
 
-    // === 当前成语展示（固定位置，只显示最后一条） ===
+    // === 当前成语展示（带过渡动画） ===
     const idiomY = 88
     if (this.currentIdiom) {
+      ctx.save()
+      ctx.globalAlpha = this.idiomTransition
+      const slideOffset = (1 - this.idiomTransition) * 20
       r.fillRoundRect(10, idiomY, width - 20, 56, 10, 'rgba(233,69,96,0.15)')
       r.strokeRoundRect(10, idiomY, width - 20, 56, 10, '#e9456044', 1)
-      r.fillBoldText(this.currentIdiom.word, width / 2, idiomY + 20, '#f5f5f5', 22)
-      r.fillText(this.currentIdiom.pinyin, width / 2, idiomY + 42, '#a8d8ea88', 11)
+      r.fillBoldText(this.currentIdiom.word, width / 2, idiomY + 20 - slideOffset, '#f5f5f5', 22)
+      r.fillText(this.currentIdiom.pinyin, width / 2, idiomY + 42 - slideOffset, '#a8d8ea88', 11)
+      ctx.restore()
+    }
+
+    // === 成语释义 ===
+    if (this.meaningAlpha > 0) {
+      r.save()
+      r.setAlpha(this.meaningAlpha * 0.85)
+      const meaningY = idiomY + 56
+      const meaningText = this.meaningMsg.length > 18
+        ? this.meaningMsg.slice(0, 18) + '…'
+        : this.meaningMsg
+      r.fillText(meaningText, width / 2, meaningY + 4, '#d4a574', 11)
+      r.resetAlpha()
+      r.restore()
     }
 
     // === 接龙提示 ===
-    const hintLineY = idiomY + 64
+    const hintLineY = idiomY + 70
     const lastPinyin = this.chain.currentLastPinyin_
     if (lastPinyin) {
       r.fillText(
@@ -466,20 +556,32 @@ export class GameScene extends Scene {
     r.fillRoundRect(10, inputBoxY, width - 20, 52, 12, 'rgba(83,52,131,0.4)')
     r.strokeRoundRect(10, inputBoxY, width - 20, 52, 12, '#a8d8ea55', 1)
 
+    // 清空并重建字符点击区域
+    this.inputCharRects = []
+
     if (inputWord) {
       const charSpacing = 28
       const totalW = (inputWord.length - 1) * charSpacing
       const startX = width / 2 - totalW / 2
       for (let i = 0; i < inputWord.length; i++) {
-        r.fillBoldText(inputWord[i], startX + i * charSpacing, inputBoxY + 26, '#f5f5f5', 22)
+        const cx = startX + i * charSpacing
+        const cy = inputBoxY + 26
+        r.fillBoldText(inputWord[i], cx, cy, '#f5f5f5', 22)
+        // 记录字符点击区域
+        this.inputCharRects.push({ x: cx - 14, w: 28, h: 36, cy })
       }
+      // 空位提示框
       for (let i = inputWord.length; i < 4; i++) {
         const cx = startX + i * charSpacing
         r.strokeRoundRect(cx - 11, inputBoxY + 10, 22, 32, 4, '#a8d8ea33', 1)
       }
+      // 输入框底部小提示
+      if (inputWord.length > 0 && inputWord.length < 4) {
+        r.fillText('点击已输入的字可删除', width / 2, inputBoxY + 50, '#a8d8ea33', 9)
+      }
     } else {
       r.fillText(
-        lastPinyin ? `点击下方汉字拼出成语` : '请输入成语',
+        lastPinyin ? '点击下方汉字拼出成语' : '请输入成语',
         width / 2, inputBoxY + 26, '#a8d8ea55', 14,
       )
     }
@@ -533,10 +635,8 @@ export class GameScene extends Scene {
     const { width, height } = this.engine
     const r = this.r
 
-    // 半透明蒙层
     r.fillRect(0, 0, width, height, 'rgba(0,0,0,0.55)')
 
-    // 弹窗面板
     const panelW = 260
     const panelH = 150
     const panelX = (width - panelW) / 2
@@ -548,7 +648,6 @@ export class GameScene extends Scene {
     r.fillBoldText('确认退出？', width / 2, panelY + 30, '#f5f5f5', 18)
     r.fillText('退出后将结算当前成绩', width / 2, panelY + 58, '#a8d8ea88', 13)
 
-    // 弹窗按钮
     this.quitConfirmBtn?.render(ctx)
     this.quitCancelBtn?.render(ctx)
   }

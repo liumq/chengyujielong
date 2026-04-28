@@ -3,6 +3,7 @@ import { CanvasRenderer } from '../render/CanvasRenderer'
 import { Button } from '../ui/Button'
 import { TweenManager, Easing } from '../core/Tween'
 import type { Engine } from '../core/Engine'
+import { appConfig } from '../config/app'
 
 /**
  * 登录场景 - 微信授权登录入口
@@ -19,6 +20,8 @@ export class LoginScene extends Scene {
   private statusColor: string = '#a8d8ea88'
   /** 是否正在登录中 */
   private logging: boolean = false
+  /** 延迟跳转定时器 */
+  private pendingTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(engine: Engine) {
     super()
@@ -71,8 +74,12 @@ export class LoginScene extends Scene {
 
   onExit(): void {
     super.onExit()
-    this.engine.input.destroy()
+    this.engine.input.reset()
     TweenManager.instance.clear()
+    if (this.pendingTimer) {
+      clearTimeout(this.pendingTimer)
+      this.pendingTimer = null
+    }
   }
 
   private async doLogin(): Promise<void> {
@@ -92,10 +99,14 @@ export class LoginScene extends Scene {
       if (code) {
         success = await this.engine.auth.loginH5(code)
       } else if (platform.redirectToWxAuth) {
-        // 跳转微信授权页（需要配置真实 appId）
+        if (!appConfig.wxH5AppId) {
+          this.statusMsg = '未配置微信 AppID'
+          this.statusColor = '#e94560'
+          this.logging = false
+          return
+        }
         this.statusMsg = '跳转微信授权...'
-        // 实际使用时替换为真实 appId
-        platform.redirectToWxAuth(window.location.href, 'YOUR_H5_APPID')
+        platform.redirectToWxAuth(window.location.href, appConfig.wxH5AppId)
         return
       }
     }
@@ -103,7 +114,7 @@ export class LoginScene extends Scene {
     if (success) {
       this.statusMsg = '登录成功！'
       this.statusColor = '#4caf50'
-      setTimeout(() => this.goMenu(), 500)
+      this.pendingTimer = setTimeout(() => this.goMenu(), 500)
     } else {
       this.statusMsg = '登录失败，请重试'
       this.statusColor = '#e94560'
@@ -117,18 +128,16 @@ export class LoginScene extends Scene {
     })
   }
 
-  update(_deltaTime: number): void {}
+  update(deltaTime: number): void {
+    super.update(deltaTime)
+  }
 
   render(ctx: CanvasRenderingContext2D): void {
     const { width, height } = this.engine
     const r = this.r
 
-    // 背景渐变
-    const grad = ctx.createLinearGradient(0, 0, 0, height)
-    grad.addColorStop(0, '#1a1a2e')
-    grad.addColorStop(1, '#16213e')
-    ctx.fillStyle = grad
-    ctx.fillRect(0, 0, width, height)
+    // 背景（使用缓存渐变）
+    r.fillBackground(width, height)
 
     // 装饰圆
     r.save()

@@ -25,8 +25,8 @@ src/
 ├── core/           # 引擎核心（Engine、Scene、GameObject、InputManager、Tween）
 ├── render/         # 渲染工具（CanvasRenderer、ParticleSystem、TextRenderer）
 ├── ui/             # UI 组件（Button、Label、Panel、UIComponent）
-├── game/           # 游戏逻辑（GameManager、IdiomChain、ScoreManager）
-├── data/           # 数据层（IdiomDatabase、StorageManager、idioms.json 460条成语）
+├── game/           # 游戏逻辑（IdiomChain、ScoreManager）
+├── data/           # 数据层（IdiomDatabase、StorageManager、idioms.json 2007条成语）
 ├── audio/          # 音效（AudioManager，Web Audio API 程序化合成）
 ├── auth/           # 认证（AuthManager，微信登录状态管理）
 ├── config/         # 前端配置（app.ts，含 requireLogin 开关）

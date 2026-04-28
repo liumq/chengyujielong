@@ -17,12 +17,17 @@ export class IdiomDatabase {
   private allIdioms: IdiomEntry[]
   /** 按首字拼音分组的索引，key = first pinyin */
   private firstIndex: Map<string, IdiomEntry[]>
+  /** 按 word 的快速查找索引 */
+  private wordIndex: Map<string, IdiomEntry>
   /** 已使用的成语集合（word 字符串） */
   private usedWords: Set<string>
+  /** 所有不重复汉字的缓存 */
+  private _allCharsCache: string[] | null = null
 
   constructor() {
     this.allIdioms = idiomsRaw as IdiomEntry[]
     this.firstIndex = new Map()
+    this.wordIndex = new Map()
     this.usedWords = new Set()
     this.buildIndex()
   }
@@ -34,6 +39,7 @@ export class IdiomDatabase {
         this.firstIndex.set(key, [])
       }
       this.firstIndex.get(key)!.push(idiom)
+      this.wordIndex.set(idiom.word, idiom)
     }
   }
 
@@ -54,12 +60,12 @@ export class IdiomDatabase {
 
   /** 判断某个词是否在词库中 */
   exists(word: string): boolean {
-    return this.allIdioms.some(i => i.word === word)
+    return this.wordIndex.has(word)
   }
 
   /** 根据词语查找完整条目 */
   find(word: string): IdiomEntry | undefined {
-    return this.allIdioms.find(i => i.word === word)
+    return this.wordIndex.get(word)
   }
 
   /**
@@ -84,10 +90,14 @@ export class IdiomDatabase {
     return entry.first === lastPinyin
   }
 
-  /** 随机获取一个开局成语 */
+  /** 随机获取一个开局成语（保证末字拼音有可接的后续成语） */
   getRandomStart(): IdiomEntry {
-    const idx = Math.floor(Math.random() * this.allIdioms.length)
-    return this.allIdioms[idx]
+    if (this.allIdioms.length === 0) throw new Error('词库为空，无法获取开局成语')
+    const candidates = this.allIdioms.filter(
+      e => (this.firstIndex.get(e.last)?.length ?? 0) >= 2,
+    )
+    const pool = candidates.length > 0 ? candidates : this.allIdioms
+    return pool[Math.floor(Math.random() * pool.length)]
   }
 
   /** 获取词库总数 */
@@ -95,14 +105,16 @@ export class IdiomDatabase {
     return this.allIdioms.length
   }
 
-  /** 获取词库中所有不重复的汉字（用于键盘干扰字等） */
+  /** 获取词库中所有不重复的汉字（首次调用时构建缓存） */
   getAllChars(): string[] {
+    if (this._allCharsCache) return this._allCharsCache
     const set = new Set<string>()
     for (const entry of this.allIdioms) {
       for (const ch of entry.word) {
         set.add(ch)
       }
     }
-    return Array.from(set)
+    this._allCharsCache = Array.from(set)
+    return this._allCharsCache
   }
 }

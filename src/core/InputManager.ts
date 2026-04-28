@@ -29,10 +29,12 @@ export class InputManager {
 
   private bindEvents(): void {
     this.platform.onTouchStart((touches) => {
-      this.touchStartTime = Date.now()
-      if (touches.length > 0) {
-        this.touchStartPos = { x: touches[0].x, y: touches[0].y }
+      if (touches.length === 0) {
+        this.touchStartTime = 0
+        return
       }
+      this.touchStartTime = Date.now()
+      this.touchStartPos = { x: touches[0].x, y: touches[0].y }
       this.touchStartListeners.forEach(cb => cb(touches))
     })
 
@@ -48,10 +50,10 @@ export class InputManager {
 
   /** tap 检测：短时间、小位移的触摸视为 tap */
   private detectTap(touches: TouchPoint[]): void {
+    if (this.touchStartTime === 0) return
     const duration = Date.now() - this.touchStartTime
     if (duration > this.TAP_MAX_DURATION) return
 
-    // touchend 时 touches 可能为空（手指抬起），使用 changedTouches 的第一个点
     const endX = touches.length > 0 ? touches[0].x : this.touchStartPos.x
     const endY = touches.length > 0 ? touches[0].y : this.touchStartPos.y
     const dx = endX - this.touchStartPos.x
@@ -88,12 +90,17 @@ export class InputManager {
     this.touchEndListeners.push(callback)
   }
 
-  /** 销毁，移除所有事件监听 */
-  destroy(): void {
-    this.platform.offAllTouch()
+  /** 重置所有回调（场景切换时调用，保留平台层监听） */
+  reset(): void {
     this.tapListeners = []
     this.touchStartListeners = []
     this.touchMoveListeners = []
     this.touchEndListeners = []
+  }
+
+  /** 完全销毁，移除平台层事件监听（引擎停止时调用） */
+  destroy(): void {
+    this.platform.offAllTouch()
+    this.reset()
   }
 }

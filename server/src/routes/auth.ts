@@ -10,13 +10,17 @@ export const authRouter: RouterType = Router()
  */
 authRouter.post('/wx-login', async (req, res) => {
   try {
-    const { code } = req.body as { code?: string }
-    if (!code) {
+    const { code } = req.body ?? {}
+    if (!code || typeof code !== 'string') {
       res.status(400).json({ error: '缺少 code 参数' })
       return
     }
 
     const sessionData = await code2Session(code)
+    if (!sessionData.openid) {
+      res.status(502).json({ error: '微信接口返回数据异常' })
+      return
+    }
     const user = {
       openid: sessionData.openid,
       nickname: '',
@@ -41,15 +45,18 @@ authRouter.post('/wx-login', async (req, res) => {
  */
 authRouter.post('/h5-login', async (req, res) => {
   try {
-    const { code } = req.body as { code?: string }
-    if (!code) {
+    const { code } = req.body ?? {}
+    if (!code || typeof code !== 'string') {
       res.status(400).json({ error: '缺少 code 参数' })
       return
     }
 
     const tokenData = await getOAuthToken(code)
     const wxUser = await getWxUserInfo(tokenData.access_token, tokenData.openid)
-
+    if (!wxUser.openid) {
+      res.status(502).json({ error: '微信接口返回数据异常' })
+      return
+    }
     const user = {
       openid: wxUser.openid,
       nickname: wxUser.nickname || '',

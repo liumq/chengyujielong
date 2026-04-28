@@ -1,3 +1,27 @@
+/** 兼容不支持 roundRect 的旧 WebView */
+function pathRoundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number,
+  r: number | number[],
+): void {
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(x, y, w, h, r)
+    return
+  }
+  const radius = typeof r === 'number' ? r : r[0]
+  const rr = Math.min(radius, w / 2, h / 2)
+  ctx.moveTo(x + rr, y)
+  ctx.lineTo(x + w - rr, y)
+  ctx.arcTo(x + w, y, x + w, y + rr, rr)
+  ctx.lineTo(x + w, y + h - rr)
+  ctx.arcTo(x + w, y + h, x + w - rr, y + h, rr)
+  ctx.lineTo(x + rr, y + h)
+  ctx.arcTo(x, y + h, x, y + h - rr, rr)
+  ctx.lineTo(x, y + rr)
+  ctx.arcTo(x, y, x + rr, y, rr)
+  ctx.closePath()
+}
+
 /**
  * Canvas 渲染工具集，封装常用的 2D 绘制操作
  */
@@ -25,7 +49,7 @@ export class CanvasRenderer {
   fillRoundRect(x: number, y: number, w: number, h: number, radius: number, color: string): void {
     this.ctx.fillStyle = color
     this.ctx.beginPath()
-    this.ctx.roundRect(x, y, w, h, radius)
+    pathRoundRect(this.ctx, x, y, w, h, radius)
     this.ctx.fill()
   }
 
@@ -34,7 +58,7 @@ export class CanvasRenderer {
     this.ctx.strokeStyle = color
     this.ctx.lineWidth = lineWidth
     this.ctx.beginPath()
-    this.ctx.roundRect(x, y, w, h, radius)
+    pathRoundRect(this.ctx, x, y, w, h, radius)
     this.ctx.stroke()
   }
 
@@ -116,5 +140,20 @@ export class CanvasRenderer {
   measureText(text: string, fontSize: number, fontFamily = 'PingFang SC, Microsoft YaHei, sans-serif'): number {
     this.ctx.font = `${fontSize}px ${fontFamily}`
     return this.ctx.measureText(text).width
+  }
+
+  private _bgGrad: CanvasGradient | null = null
+  private _bgGradH: number = 0
+
+  /** 填充深色主题背景渐变（自动缓存 gradient 对象） */
+  fillBackground(width: number, height: number): void {
+    if (!this._bgGrad || this._bgGradH !== height) {
+      this._bgGrad = this.ctx.createLinearGradient(0, 0, 0, height)
+      this._bgGrad.addColorStop(0, '#1a1a2e')
+      this._bgGrad.addColorStop(1, '#16213e')
+      this._bgGradH = height
+    }
+    this.ctx.fillStyle = this._bgGrad
+    this.ctx.fillRect(0, 0, width, height)
   }
 }

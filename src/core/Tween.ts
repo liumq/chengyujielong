@@ -6,7 +6,7 @@ export const Easing = {
   easeInQuad: (t: number) => t * t,
   easeOutQuad: (t: number) => t * (2 - t),
   easeInOutQuad: (t: number) => (t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t),
-  easeOutCubic: (t: number) => (--t) * t * t + 1,
+  easeOutCubic: (t: number) => { const u = t - 1; return u * u * u + 1 },
   easeInCubic: (t: number) => t * t * t,
   easeInOutCubic: (t: number) => t < 0.5 ? 4 * t * t * t : (t - 1) * (2 * t - 2) * (2 * t - 2) + 1,
   easeOutBack: (t: number) => {
@@ -60,7 +60,7 @@ export class Tween {
   get done(): boolean { return this._done }
 
   constructor(options: TweenOptions) {
-    this.duration = options.duration
+    this.duration = Math.max(1, options.duration)
     this.easing = options.easing ?? Easing.easeOutQuad
     this.onUpdate = options.onUpdate
     this.onComplete = options.onComplete
@@ -89,6 +89,8 @@ export class Tween {
 
   pause(): void { this._paused = true }
   resume(): void { this._paused = false }
+  /** 取消动画（标记为已完成但不触发 onComplete） */
+  cancel(): void { this._done = true }
 
   /** 链式：完成后执行下一个 Tween */
   then(options: TweenOptions): Tween {

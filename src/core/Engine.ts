@@ -22,14 +22,12 @@ export class Engine {
   readonly auth: AuthManager
 
   /** Canvas 逻辑宽度（CSS 像素，供场景使用） */
-  get width(): number {
-    return parseInt(this.canvas.style.width) || this.canvas.width
-  }
-
+  private _logicWidth: number = 0
   /** Canvas 逻辑高度（CSS 像素，供场景使用） */
-  get height(): number {
-    return parseInt(this.canvas.style.height) || this.canvas.height
-  }
+  private _logicHeight: number = 0
+
+  get width(): number { return this._logicWidth }
+  get height(): number { return this._logicHeight }
 
   private lastTime: number = 0
   private running: boolean = false
@@ -46,7 +44,7 @@ export class Engine {
     this.sceneManager = new SceneManager()
     this.input = new InputManager(platform)
     this.storage = new StorageManager(platform)
-    this.audio = new AudioManager(null, this.storage.getSfxEnabled())
+    this.audio = new AudioManager(this.storage.getSfxEnabled())
     this.auth = new AuthManager(platform, this.storage)
 
     // 监听窗口 resize，自动重新适配
@@ -57,10 +55,14 @@ export class Engine {
     this.resizeCanvas()
   }
 
-  /** 启动引擎，切换到初始场景 */
+  /** 启动引擎，切换到初始场景（重复调用时先停止已有循环） */
   start(initialScene: Scene): void {
+    if (this.running) {
+      cancelAnimationFrame(this.rafId)
+    }
     this.sceneManager.switchTo(initialScene)
     this.running = true
+    this.lastTime = 0
     this.rafId = requestAnimationFrame((t) => this.loop(t))
   }
 
@@ -68,6 +70,8 @@ export class Engine {
   stop(): void {
     this.running = false
     cancelAnimationFrame(this.rafId)
+    this.sceneManager.clear()
+    TweenManager.instance.clear()
     this.input.destroy()
     this.platform.offResize()
   }
@@ -90,13 +94,16 @@ export class Engine {
       w = Math.round(h * 9 / 16)
     }
 
+    this._logicWidth = w
+    this._logicHeight = h
+
     this.canvas.style.width = `${w}px`
     this.canvas.style.height = `${h}px`
     this.canvas.width = Math.round(w * dpr)
     this.canvas.height = Math.round(h * dpr)
 
-    // 重置缩放（scale 在 resize 后需要重新设置）
-    this.ctx.scale(dpr, dpr)
+    // 重置变换矩阵后设置 DPR 缩放，避免多次 resize 导致 scale 累乘
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   }
 
   /** 主循环 */

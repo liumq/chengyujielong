@@ -27,8 +27,11 @@ export class AuthManager {
   private _token: string | null = null
   private _user: UserInfo | null = null
   private apiBase: string
+  /** 离线降级标记：网络异常时使用本地缓存恢复，token 未经服务端验证 */
+  private _offline: boolean = false
 
   get isLoggedIn(): boolean { return !!this._token }
+  get isOffline(): boolean { return this._offline }
   get user(): UserInfo | null { return this._user }
   get token(): string | null { return this._token }
 
@@ -58,12 +61,13 @@ export class AuthManager {
         return true
       }
     } catch {
-      // 网络异常时尝试使用本地缓存的用户信息
+      // 网络异常时使用本地缓存作为临时降级，标记为离线态
       const cached = this.storage.getUserInfo()
-      if (cached) {
+      if (cached && token) {
         try {
           this._token = token
           this._user = JSON.parse(cached) as UserInfo
+          this._offline = true
           return true
         } catch { /* 解析失败则放弃 */ }
       }
@@ -131,6 +135,7 @@ export class AuthManager {
   private saveLogin(token: string, user: UserInfo): void {
     this._token = token
     this._user = user
+    this._offline = false
     this.storage.setToken(token)
     this.storage.setUserInfo(JSON.stringify(user))
   }

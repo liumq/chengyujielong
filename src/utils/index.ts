@@ -14,16 +14,19 @@ export function lerp(a: number, b: number, t: number): number {
 
 /** 生成 [min, max) 之间的随机整数 */
 export function randomInt(min: number, max: number): number {
+  if (min > max) [min, max] = [max, min]
   return Math.floor(Math.random() * (max - min)) + min
 }
 
 /** 生成 [min, max) 之间的随机浮点数 */
 export function randomFloat(min: number, max: number): number {
+  if (min > max) [min, max] = [max, min]
   return Math.random() * (max - min) + min
 }
 
-/** 从数组中随机选取一个元素 */
+/** 从数组中随机选取一个元素，空数组时抛出错误 */
 export function randomPick<T>(arr: T[]): T {
+  if (arr.length === 0) throw new Error('randomPick: 数组不能为空')
   return arr[Math.floor(Math.random() * arr.length)]
 }
 
@@ -36,9 +39,15 @@ export function shuffle<T>(arr: T[]): T[] {
   return arr
 }
 
-/** 十六进制颜色转 RGBA 字符串 */
+/** 十六进制颜色转 RGBA 字符串，支持 #RGB 和 #RRGGBB 格式 */
 export function hexToRgba(hex: string, alpha: number = 1): string {
-  const h = hex.replace('#', '')
+  let h = hex.replace('#', '')
+  if (h.length === 3) {
+    h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2]
+  }
+  if (h.length !== 6 || !/^[0-9a-fA-F]{6}$/.test(h)) {
+    return `rgba(0, 0, 0, ${alpha})`
+  }
   const r = parseInt(h.substring(0, 2), 16)
   const g = parseInt(h.substring(2, 4), 16)
   const b = parseInt(h.substring(4, 6), 16)

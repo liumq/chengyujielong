@@ -27,6 +27,7 @@ interface WXInnerAudioContext {
   play(): void
   destroy(): void
   onEnded(cb: () => void): void
+  onError(cb: () => void): void
 }
 
 interface WXTouch {
@@ -47,24 +48,30 @@ export class WXPlatform implements IPlatform {
   private sysInfo = wx.getSystemInfoSync()
 
   getScreenSize(): { width: number; height: number } {
+    this.sysInfo = wx.getSystemInfoSync()
     return { width: this.sysInfo.windowWidth, height: this.sysInfo.windowHeight }
   }
 
   getDevicePixelRatio(): number {
+    // 每次都读取最新值，避免 resize 后 DPR 过期
+    this.sysInfo = wx.getSystemInfoSync()
     return this.sysInfo.pixelRatio
   }
 
   onTouchStart(callback: (touches: TouchPoint[]) => void): void {
+    if (this.touchStartCb) wx.offTouchStart(this.touchStartCb)
     this.touchStartCb = (e) => callback(this.normalize(e.touches))
     wx.onTouchStart(this.touchStartCb)
   }
 
   onTouchMove(callback: (touches: TouchPoint[]) => void): void {
+    if (this.touchMoveCb) wx.offTouchMove(this.touchMoveCb)
     this.touchMoveCb = (e) => callback(this.normalize(e.touches))
     wx.onTouchMove(this.touchMoveCb)
   }
 
   onTouchEnd(callback: (touches: TouchPoint[]) => void): void {
+    if (this.touchEndCb) wx.offTouchEnd(this.touchEndCb)
     this.touchEndCb = (e) => callback(this.normalize(e.changedTouches))
     wx.onTouchEnd(this.touchEndCb)
   }
@@ -76,6 +83,7 @@ export class WXPlatform implements IPlatform {
   }
 
   onResize(callback: () => void): void {
+    if (this.resizeCb) wx.offWindowResize(this.resizeCb)
     this.resizeCb = callback
     wx.onWindowResize(callback)
   }
@@ -120,9 +128,12 @@ export class WXPlatform implements IPlatform {
   playAudio(src: string): void {
     try {
       const audio = wx.createInnerAudioContext()
+      const cleanup = () => audio.destroy()
+      audio.onEnded(cleanup)
+      audio.onError(cleanup)
       audio.src = src
       audio.autoplay = true
-      audio.onEnded(() => audio.destroy())
+      audio.play()
     } catch {
       // 音频播放失败时静默忽略
     }

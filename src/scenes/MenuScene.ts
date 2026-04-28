@@ -51,7 +51,8 @@ const HELP_SECTIONS: HelpSection[] = [
   {
     title: '时间限制',
     lines: [
-      '· 每次接龙限时 30 秒',
+      '· 初始限时 30 秒，随接龙成功递减',
+      '· 每成功一次减少 1 秒（最低 10 秒）',
       '· 成功接龙后计时器重置',
       '· 倒计时归零则游戏结束',
     ],
@@ -181,8 +182,8 @@ export class MenuScene extends Scene {
       }
     })
 
-    // 触摸滚动（用于说明弹窗）
-    this.engine.platform.onTouchStart((touches) => {
+    // 触摸滚动（用于说明弹窗），通过 InputManager 注册避免覆盖平台单槽监听
+    this.engine.input.onTouchStart((touches) => {
       if (!this.helpVisible || touches.length === 0) return
       this.helpDragging = true
       this.helpTouchStartY = touches[0].y
@@ -192,12 +193,11 @@ export class MenuScene extends Scene {
       this.helpVelocity = 0
     })
 
-    this.engine.platform.onTouchMove((touches) => {
+    this.engine.input.onTouchMove((touches) => {
       if (!this.helpDragging || touches.length === 0) return
       const dy = this.helpTouchStartY - touches[0].y
       this.helpScrollY = this.clampScroll(this.helpScrollStartY + dy)
 
-      // 记录速度
       const now = Date.now()
       const dt = now - this.helpLastTouchTime
       if (dt > 0) {
@@ -207,15 +207,14 @@ export class MenuScene extends Scene {
       this.helpLastTouchTime = now
     })
 
-    this.engine.platform.onTouchEnd(() => {
+    this.engine.input.onTouchEnd(() => {
       this.helpDragging = false
     })
   }
 
   onExit(): void {
     super.onExit()
-    this.engine.input.destroy()
-    this.engine.platform.offAllTouch()
+    this.engine.input.reset()
     TweenManager.instance.clear()
   }
 
@@ -280,12 +279,8 @@ export class MenuScene extends Scene {
     const { width, height } = this.engine
     const r = this.r
 
-    // 背景
-    const grad = ctx.createLinearGradient(0, 0, 0, height)
-    grad.addColorStop(0, '#1a1a2e')
-    grad.addColorStop(1, '#16213e')
-    ctx.fillStyle = grad
-    ctx.fillRect(0, 0, width, height)
+    // 背景（使用缓存渐变）
+    r.fillBackground(width, height)
 
     // 装饰圆
     r.save()

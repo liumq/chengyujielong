@@ -34,6 +34,7 @@ export class TextRenderer {
     options: TextOptions = {},
   ): number {
     const { color = '#ffffff', fontSize = 16, bold = false, align = 'left', fontFamily } = options
+    this.ctx.save()
     this.applyFont(fontSize, bold, fontFamily)
     this.ctx.fillStyle = color
     this.ctx.textAlign = align
@@ -43,6 +44,7 @@ export class TextRenderer {
     for (let i = 0; i < lines.length; i++) {
       this.ctx.fillText(lines[i], x, y + i * lineHeight)
     }
+    this.ctx.restore()
     return lines.length
   }
 
@@ -66,6 +68,7 @@ export class TextRenderer {
       fontFamily,
     } = options
 
+    this.ctx.save()
     this.applyFont(fontSize, bold, fontFamily)
     this.ctx.textAlign = align
     this.ctx.textBaseline = baseline
@@ -77,6 +80,7 @@ export class TextRenderer {
 
     this.ctx.fillStyle = color
     this.ctx.fillText(text, x, y)
+    this.ctx.restore()
   }
 
   /**
@@ -94,6 +98,7 @@ export class TextRenderer {
     options: TextOptions = {},
   ): void {
     const { color = '#ffffff', fontSize = 16, bold = false, fontFamily } = options
+    this.ctx.save()
     this.applyFont(fontSize, bold, fontFamily)
     this.ctx.fillStyle = color
     this.ctx.textAlign = 'center'
@@ -102,6 +107,7 @@ export class TextRenderer {
     for (let i = 0; i < text.length; i++) {
       this.ctx.fillText(text[i], x, y + i * (fontSize + charSpacing))
     }
+    this.ctx.restore()
   }
 
   /**

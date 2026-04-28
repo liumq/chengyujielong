@@ -29,9 +29,10 @@ export abstract class Scene {
     }
   }
 
-  /** 每帧更新所有激活对象 */
+  /** 每帧更新所有激活对象（快照遍历，避免遍历时增删导致跳过/重复） */
   update(deltaTime: number): void {
-    for (const obj of this.objects) {
+    const snapshot = this.objects.slice()
+    for (const obj of snapshot) {
       if (obj.active) obj.update(deltaTime)
     }
   }
@@ -62,6 +63,14 @@ export class SceneManager {
   /** 获取当前场景 */
   getCurrent(): Scene | null {
     return this.current
+  }
+
+  /** 清理当前场景（引擎停止时调用） */
+  clear(): void {
+    if (this.current) {
+      this.current.onExit()
+      this.current = null
+    }
   }
 
   /** 转发 update */

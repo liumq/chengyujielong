@@ -12,13 +12,17 @@ export interface JwtPayload {
 export function signToken(payload: JwtPayload): string {
   return jwt.sign(payload, config.jwtSecret, {
     expiresIn: config.jwtExpiresIn,
+    algorithm: 'HS256',
   } as jwt.SignOptions)
 }
 
 /** 验证并解码 JWT token，失败返回 null */
 export function verifyToken(token: string): JwtPayload | null {
   try {
-    const decoded = jwt.verify(token, config.jwtSecret) as JwtPayload
+    const decoded = jwt.verify(token, config.jwtSecret, {
+      algorithms: ['HS256'],
+    }) as JwtPayload
+    if (!decoded.openid || typeof decoded.openid !== 'string') return null
     return decoded
   } catch {
     return null

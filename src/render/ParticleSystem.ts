@@ -4,7 +4,7 @@ interface Particle {
   vx: number
   vy: number
   life: number    // 剩余生命（0~1）
-  decay: number   // 每帧衰减速度
+  decay: number   // 每秒衰减速度
   size: number
   color: string
   gravity: number
@@ -16,9 +16,12 @@ interface Particle {
 export class ParticleSystem {
   private particles: Particle[] = []
   private readonly COLORS = ['#e94560', '#ffd700', '#a8d8ea', '#f5f5f5', '#ff9800']
+  private readonly MAX_PARTICLES = 200
 
   /** 在指定位置爆发粒子 */
   burst(x: number, y: number, count = 18): void {
+    const available = this.MAX_PARTICLES - this.particles.length
+    count = Math.min(count, available)
     for (let i = 0; i < count; i++) {
       const angle = (Math.PI * 2 * i) / count + Math.random() * 0.5
       const speed = 80 + Math.random() * 120
@@ -28,7 +31,7 @@ export class ParticleSystem {
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
         life: 1,
-        decay: 0.018 + Math.random() * 0.012,
+        decay: 1.1 + Math.random() * 0.7,
         size: 3 + Math.random() * 5,
         color: this.COLORS[Math.floor(Math.random() * this.COLORS.length)],
         gravity: 80 + Math.random() * 60,
@@ -38,6 +41,8 @@ export class ParticleSystem {
 
   /** 在顶部飘出庆祝彩屑 */
   confetti(canvasWidth: number, count = 30): void {
+    const available = this.MAX_PARTICLES - this.particles.length
+    count = Math.min(count, available)
     for (let i = 0; i < count; i++) {
       this.particles.push({
         x: Math.random() * canvasWidth,
@@ -45,7 +50,7 @@ export class ParticleSystem {
         vx: (Math.random() - 0.5) * 60,
         vy: 60 + Math.random() * 80,
         life: 1,
-        decay: 0.008 + Math.random() * 0.006,
+        decay: 0.5 + Math.random() * 0.35,
         size: 4 + Math.random() * 6,
         color: this.COLORS[Math.floor(Math.random() * this.COLORS.length)],
         gravity: 20,
@@ -55,13 +60,18 @@ export class ParticleSystem {
 
   update(deltaTime: number): void {
     const dt = deltaTime / 1000
-    for (const p of this.particles) {
+    let writeIdx = 0
+    for (let i = 0; i < this.particles.length; i++) {
+      const p = this.particles[i]
       p.vy += p.gravity * dt
       p.x += p.vx * dt
       p.y += p.vy * dt
-      p.life -= p.decay
+      p.life -= p.decay * dt
+      if (p.life > 0) {
+        this.particles[writeIdx++] = p
+      }
     }
-    this.particles = this.particles.filter(p => p.life > 0)
+    this.particles.length = writeIdx
   }
 
   render(ctx: CanvasRenderingContext2D): void {

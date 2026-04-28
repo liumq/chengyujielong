@@ -26,6 +26,10 @@ export class H5Platform implements IPlatform {
   }
 
   onTouchStart(callback: (touches: TouchPoint[]) => void): void {
+    if (this.touchStartHandler) {
+      this.canvas.removeEventListener('touchstart', this.touchStartHandler as EventListener)
+      this.canvas.removeEventListener('mousedown', this.touchStartHandler as EventListener)
+    }
     this.touchStartHandler = (e: TouchEvent | MouseEvent) => {
       e.preventDefault()
       callback(this.normalizeTouches(e))
@@ -35,6 +39,10 @@ export class H5Platform implements IPlatform {
   }
 
   onTouchMove(callback: (touches: TouchPoint[]) => void): void {
+    if (this.touchMoveHandler) {
+      this.canvas.removeEventListener('touchmove', this.touchMoveHandler as EventListener)
+      this.canvas.removeEventListener('mousemove', this.touchMoveHandler as EventListener)
+    }
     this.touchMoveHandler = (e: TouchEvent | MouseEvent) => {
       e.preventDefault()
       callback(this.normalizeTouches(e))
@@ -44,12 +52,17 @@ export class H5Platform implements IPlatform {
   }
 
   onTouchEnd(callback: (touches: TouchPoint[]) => void): void {
+    if (this.touchEndHandler) {
+      this.canvas.removeEventListener('touchend', this.touchEndHandler as EventListener)
+      document.removeEventListener('mouseup', this.touchEndHandler as EventListener)
+    }
     this.touchEndHandler = (e: TouchEvent | MouseEvent) => {
       e.preventDefault()
       callback(this.normalizeTouches(e))
     }
     this.canvas.addEventListener('touchend', this.touchEndHandler as EventListener, { passive: false })
-    this.canvas.addEventListener('mouseup', this.touchEndHandler as EventListener)
+    // mouseup 绑定在 document 上，避免鼠标在画布外松开时丢失事件
+    document.addEventListener('mouseup', this.touchEndHandler as EventListener)
   }
 
   offAllTouch(): void {
@@ -65,12 +78,15 @@ export class H5Platform implements IPlatform {
     }
     if (this.touchEndHandler) {
       this.canvas.removeEventListener('touchend', this.touchEndHandler as EventListener)
-      this.canvas.removeEventListener('mouseup', this.touchEndHandler as EventListener)
+      document.removeEventListener('mouseup', this.touchEndHandler as EventListener)
       this.touchEndHandler = null
     }
   }
 
   onResize(callback: () => void): void {
+    if (this.resizeHandler) {
+      window.removeEventListener('resize', this.resizeHandler)
+    }
     this.resizeHandler = callback
     window.addEventListener('resize', callback)
   }
@@ -83,15 +99,27 @@ export class H5Platform implements IPlatform {
   }
 
   getStorage(key: string): string | null {
-    return localStorage.getItem(key)
+    try {
+      return localStorage.getItem(key)
+    } catch {
+      return null
+    }
   }
 
   setStorage(key: string, value: string): void {
-    localStorage.setItem(key, value)
+    try {
+      localStorage.setItem(key, value)
+    } catch {
+      // 隐私模式或配额已满时静默忽略
+    }
   }
 
   removeStorage(key: string): void {
-    localStorage.removeItem(key)
+    try {
+      localStorage.removeItem(key)
+    } catch {
+      // 静默忽略
+    }
   }
 
   createCanvas(width: number, height: number): HTMLCanvasElement {

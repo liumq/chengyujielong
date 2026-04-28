@@ -37,6 +37,8 @@ export class Button extends UIComponent {
   /** 涟漪效果列表 */
   private ripples: RippleEffect[] = []
   private onClick?: () => void
+  /** 自定义数据，供业务层存取 */
+  data: Record<string, unknown> = {}
 
   constructor(x: number, y: number, width: number, height: number, options: ButtonOptions) {
     super(x, y, width, height)
@@ -64,7 +66,8 @@ export class Button extends UIComponent {
   }
 
   private playPressAnimation(tapX: number, tapY: number): void {
-    // 涟漪效果：从点击位置向外扩散
+    // 涟漪效果：从点击位置向外扩散（涟漪允许叠加，但限制最大数量）
+    if (this.ripples.length >= 3) this.ripples.shift()
     const maxR = Math.max(this.width, this.height) * 1.2
     const ripple: RippleEffect = { x: tapX, y: tapY, progress: 0, maxRadius: maxR }
     this.ripples.push(ripple)
@@ -78,7 +81,7 @@ export class Button extends UIComponent {
       },
     })
 
-    // 高亮闪烁
+    // 高亮闪烁（重置状态避免堆叠）
     this.highlightAlpha = 0.35
     TweenManager.instance.create({
       duration: 300,
@@ -87,7 +90,8 @@ export class Button extends UIComponent {
       onComplete: () => { this.highlightAlpha = 0 },
     })
 
-    // 按压缩放
+    // 按压缩放（重置状态避免堆叠）
+    this.scaleY = 1
     TweenManager.instance.create({
       duration: 80,
       easing: Easing.easeInQuad,
